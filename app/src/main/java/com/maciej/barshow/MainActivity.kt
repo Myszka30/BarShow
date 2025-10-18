@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -29,6 +30,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
@@ -94,6 +96,7 @@ fun DetailsScreen(navController: NavController) {
     var leftCounter by remember { mutableIntStateOf(0) }
     var rightCounter by remember { mutableIntStateOf(0) }
     val history = remember { mutableStateListOf<String>() }
+    val setsPointHistory = remember { mutableStateListOf<List<String>>() }
     val setScores = remember { mutableStateListOf<String>() }
     val focusRequester = remember { FocusRequester() }
 
@@ -102,6 +105,15 @@ fun DetailsScreen(navController: NavController) {
     var servicePlayer by remember { mutableIntStateOf(1) }
     var serviceCount by remember { mutableIntStateOf(1) }
     var winner by remember { mutableStateOf<Int?>(null) }
+
+    val context = LocalContext.current
+    val soundPlayer = remember { SoundPlayer(context) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            soundPlayer.release()
+        }
+    }
 
     when {
         winner != null -> {
@@ -161,6 +173,7 @@ fun DetailsScreen(navController: NavController) {
         }
 
         else -> {
+            val isFinalSet = setScores.size == 4
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -169,80 +182,101 @@ fun DetailsScreen(navController: NavController) {
                     .onKeyEvent { keyEvent ->
                         if (keyEvent.nativeKeyEvent.action != KeyEvent.ACTION_UP) return@onKeyEvent false
 
-                        val isFinalSet = setScores.size == 4
-                        var pointScored = false
-
                         when (keyEvent.nativeKeyEvent.keyCode) {
                             KeyEvent.KEYCODE_DPAD_LEFT -> {
                                 leftCounter++
                                 history.add("left")
-                                pointScored = true
+                                soundPlayer.playAddPointSound()
                             }
 
                             KeyEvent.KEYCODE_DPAD_RIGHT -> {
                                 rightCounter++
                                 history.add("right")
-                                pointScored = true
+                                soundPlayer.playAddPointSound()
                             }
 
                             KeyEvent.KEYCODE_DPAD_DOWN -> {
                                 if (history.isNotEmpty()) {
-                                    val lastPointFor = history.removeLast()
-                                    val wasPointInThisSet = when (lastPointFor) {
-                                        "left" -> if (leftCounter > 0) { leftCounter--; true } else false
-                                        "right" -> if (rightCounter > 0) { rightCounter--; true } else false
-                                        else -> false
-                                    }
+                                    val lastPointFor = history.removeAt(history.lastIndex)
+                                    if (lastPointFor == "left") leftCounter-- else rightCounter--
+                                    soundPlayer.playRemovePointSound()
 
-                                    if (wasPointInThisSet) {
-                                        if (isFinalSet) {
+                                    if (isFinalSet) {
+                                        servicePlayer = if (servicePlayer == 1) 2 else 1
+                                    } else {
+                                        serviceCount--
+                                        if (serviceCount == 0) {
                                             servicePlayer = if (servicePlayer == 1) 2 else 1
-                                        } else {
-                                            serviceCount--
-                                            if (serviceCount == 0) {
-                                                servicePlayer = if (servicePlayer == 1) 2 else 1
-                                                serviceCount = 2
-                                            }
+                                            serviceCount = 2
                                         }
                                     }
+                                } else if (setsPointHistory.isNotEmpty()) {
+                                    val lastSetHistory = setsPointHistory.removeAt(setsPointHistory.lastIndex)
+                                    setScores.removeAt(setScores.lastIndex)
+
+                                    history.clear()
+                                    history.addAll(lastSetHistory)
+
+                                    val prevLeftCounter = history.count { it == "left" }
+                                    val prevRightCounter = history.count { it == "right" }
+
+                                    val lastPointFor = history.removeAt(history.lastIndex)
+                                    leftCounter = if (lastPointFor == "left") prevLeftCounter - 1 else prevLeftCounter
+                                    rightCounter = if (lastPointFor == "right") prevRightCounter - 1 else prevRightCounter
+
+                                    setStartingPlayer = if (setStartingPlayer == 1) 2 else 1
+
+                                    val isNowFinalSet = setScores.size == 4
+                                    if (isNowFinalSet) {
+                                        val totalPoints = leftCounter + rightCounter
+                                        servicePlayer = if (totalPoints % 2 == 0) setStartingPlayer!! else (if (setStartingPlayer == 1) 2 else 1)
+                                        serviceCount = 1
+                                    } else {
+                                        val totalPoints = leftCounter + rightCounter
+                                        val servicePairIndex = totalPoints / 2
+                                        servicePlayer = if (servicePairIndex % 2 == 0) setStartingPlayer!! else (if (setStartingPlayer == 1) 2 else 1)
+                                        serviceCount = (totalPoints % 2) + 1
+                                    }
+                                    soundPlayer.playRemovePointSound()
                                 }
+                                return@onKeyEvent true
                             }
 
                             else -> return@onKeyEvent false
                         }
 
-                        if (pointScored) {
-                            val winPoints = if (isFinalSet) 6 else 11
-                            val setWon = (leftCounter >= winPoints && leftCounter >= rightCounter + 2) ||
-                                    (rightCounter >= winPoints && rightCounter >= leftCounter + 2)
+                        val winPoints = if (isFinalSet) 6 else 11
+                        val setWon = (leftCounter >= winPoints && leftCounter >= rightCounter + 2) ||
+                                (rightCounter >= winPoints && rightCounter >= leftCounter + 2)
 
-                            if (setWon && setScores.size < 5) {
-                                setScores.add("$leftCounter-$rightCounter")
+                        if (setWon && setScores.size < 5) {
+                            setScores.add("$leftCounter-$rightCounter")
+                            setsPointHistory.add(history.toList())
 
-                                val leftSetsWon = setScores.count { it.split('-')[0].toInt() > it.split('-')[1].toInt() }
-                                val rightSetsWon = setScores.count { it.split('-')[1].toInt() > it.split('-')[0].toInt() }
+                            val leftSetsWon = setScores.count { it.split('-')[0].toInt() > it.split('-')[1].toInt() }
+                            val rightSetsWon = setScores.count { it.split('-')[1].toInt() > it.split('-')[0].toInt() }
 
-                                if (leftSetsWon == 3) {
-                                    winner = 1
-                                } else if (rightSetsWon == 3) {
-                                    winner = 2
-                                } else {
-                                    leftCounter = 0
-                                    rightCounter = 0
-                                    setStartingPlayer = if (setStartingPlayer == 1) 2 else 1
-                                    servicePlayer = setStartingPlayer!!
+                            if (leftSetsWon == 3) {
+                                winner = 1
+                            } else if (rightSetsWon == 3) {
+                                winner = 2
+                            } else {
+                                leftCounter = 0
+                                rightCounter = 0
+                                history.clear()
+                                setStartingPlayer = if (setStartingPlayer == 1) 2 else 1
+                                servicePlayer = setStartingPlayer!!
+                                serviceCount = 1
+                            }
+                        } else if (!setWon) {
+                            if (isFinalSet) {
+                                servicePlayer = if (servicePlayer == 1) 2 else 1
+                            } else {
+                                if (serviceCount == 2) {
                                     serviceCount = 1
-                                }
-                            } else if (!setWon) {
-                                if (isFinalSet) {
                                     servicePlayer = if (servicePlayer == 1) 2 else 1
                                 } else {
-                                    if (serviceCount == 2) {
-                                        serviceCount = 1
-                                        servicePlayer = if (servicePlayer == 1) 2 else 1
-                                    } else {
-                                        serviceCount++
-                                    }
+                                    serviceCount++
                                 }
                             }
                         }
@@ -265,9 +299,10 @@ fun DetailsScreen(navController: NavController) {
                     horizontalArrangement = Arrangement.spacedBy(100.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(text = "$leftCounter", fontSize = 120.sp)
-                    Text(text = "$rightCounter", fontSize = 120.sp)
+                    Text(text = "$leftCounter", fontSize = 180.sp)
+                    Text(text = "$rightCounter", fontSize = 180.sp)
                 }
+                // Service indicator
                 Box(
                     Modifier
                         .align(if (servicePlayer == 1) Alignment.BottomStart else Alignment.BottomEnd)
@@ -275,6 +310,18 @@ fun DetailsScreen(navController: NavController) {
                         .size(24.dp)
                         .background(MaterialTheme.colorScheme.primary, CircleShape)
                 )
+
+                // Next service indicator
+                if (serviceCount == 2 && !isFinalSet) {
+                    Box(
+                        Modifier
+                            .align(if (servicePlayer == 1) Alignment.BottomEnd else Alignment.BottomStart)
+                            .padding(32.dp)
+                            .size(24.dp)
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), CircleShape)
+                    )
+                }
+
                 Row(
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 32.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
