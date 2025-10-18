@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -286,21 +287,40 @@ fun DetailsScreen(navController: NavController) {
                 // UI dla gry w toku
                 Text(
                     text = "Gracz 1",
-                    style = MaterialTheme.typography.headlineSmall,
+                    style = MaterialTheme.typography.headlineLarge,
                     modifier = Modifier.align(Alignment.TopStart).padding(32.dp)
                 )
                 Text(
                     text = "Gracz 2",
-                    style = MaterialTheme.typography.headlineSmall,
+                    style = MaterialTheme.typography.headlineLarge,
                     modifier = Modifier.align(Alignment.TopEnd).padding(32.dp)
                 )
-                Row(
+                Column(
                     modifier = Modifier.align(Alignment.Center),
-                    horizontalArrangement = Arrangement.spacedBy(100.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
                 ) {
-                    Text(text = "$leftCounter", fontSize = 180.sp)
-                    Text(text = "$rightCounter", fontSize = 180.sp)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(100.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(text = "$leftCounter", fontSize = 180.sp)
+                        Text(text = "$rightCounter", fontSize = 180.sp)
+                    }
+                    Box(
+                        modifier = Modifier
+                            .padding(top = 24.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .padding(horizontal = 24.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = "Set ${setScores.size + 1}",
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
                 }
                 // Service indicator
                 Box(
