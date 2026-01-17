@@ -114,17 +114,37 @@ fun MainScreen(onNavigateToDetails: () -> Unit, onNavigateToSettings: () -> Unit
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Text("Wybierz grę", style = MaterialTheme.typography.displayMedium, modifier = Modifier.padding(bottom = 48.dp))
-            Button(onClick = onNavigateToDetails, modifier = Modifier.size(width = 300.dp, height = 60.dp)) {
-                Text("Tenis Stołowy", style = MaterialTheme.typography.labelLarge)
+            Text(
+                text = "Wybierz grę",
+                style = MaterialTheme.typography.displayMedium,
+                modifier = Modifier.padding(bottom = 48.dp)
+            )
+
+            // Przycisk 1: Zmniejszony i wyśrodkowany
+            Button(
+                onClick = onNavigateToDetails,
+                modifier = Modifier.size(width = 220.dp, height = 50.dp)
+            ) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Tenis Stołowy", style = MaterialTheme.typography.labelLarge)
+                }
             }
+
             Spacer(modifier = Modifier.size(24.dp))
-            Button(onClick = onNavigateToSettings, modifier = Modifier.size(width = 300.dp, height = 60.dp)) {
-                Text("Ustawienia", style = MaterialTheme.typography.labelLarge)
+
+            // Przycisk 2: Zmniejszony i wyśrodkowany
+            Button(
+                onClick = onNavigateToSettings,
+                modifier = Modifier.size(width = 220.dp, height = 50.dp)
+            ) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Ustawienia", style = MaterialTheme.typography.labelLarge)
+                }
             }
         }
     }
 }
+
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
