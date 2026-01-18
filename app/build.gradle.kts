@@ -57,5 +57,6 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     implementation("androidx.compose.material3:material3:1.4.0")
-    implementation("mysql:mysql-connector-java:8.0.28")
+    // Zmiana na wersję kompatybilną z Androidem
+    implementation("mysql:mysql-connector-java:5.1.49")
 }

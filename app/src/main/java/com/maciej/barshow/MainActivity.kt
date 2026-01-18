@@ -1,4 +1,3 @@
-
 package com.maciej.barshow
 
 import android.content.Context
@@ -27,7 +26,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.key.onKeyEvent
@@ -42,8 +40,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.tv.material3.*
 import com.maciej.barshow.ui.theme.BarShowTheme
-import java.sql.Connection
 import java.sql.DriverManager
+
+private const val TAG = "BarShowDB"
 
 class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalTvMaterial3Api::class)
@@ -149,15 +148,15 @@ fun MainScreen(onNavigateToDetails: () -> Unit, onNavigateToSettings: () -> Unit
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             Text("Wybierz grę", style = MaterialTheme.typography.displayMedium, modifier = Modifier.padding(bottom = 48.dp))
-            Button(onClick = onNavigateToDetails, modifier = Modifier.size(width = 220.dp, height = 50.dp)) {
+            Button(onClick = onNavigateToDetails, modifier = Modifier.size(width = 240.dp, height = 56.dp)) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Tenis Stołowy", style = MaterialTheme.typography.labelLarge) }
             }
             Spacer(modifier = Modifier.size(16.dp))
-            Button(onClick = onNavigateToProfiles, modifier = Modifier.size(width = 220.dp, height = 50.dp)) {
+            Button(onClick = onNavigateToProfiles, modifier = Modifier.size(width = 240.dp, height = 56.dp)) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Profile", style = MaterialTheme.typography.labelLarge) }
             }
             Spacer(modifier = Modifier.size(16.dp))
-            Button(onClick = onNavigateToSettings, modifier = Modifier.size(width = 220.dp, height = 50.dp)) {
+            Button(onClick = onNavigateToSettings, modifier = Modifier.size(width = 240.dp, height = 56.dp)) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Ustawienia", style = MaterialTheme.typography.labelLarge) }
             }
         }
@@ -179,28 +178,59 @@ fun ProfilesScreen(navController: NavController, profiles: MutableList<String>, 
             FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, maxItemsInEachRow = 5) {
                 profiles.forEach { profile ->
                     val isSelected = selectedPlayers.contains(profile)
-                    var isFocused by remember { mutableStateOf(false) }
-                    Box(modifier = Modifier
-                        .size(100.dp).padding(8.dp)
-                        .onFocusChanged { isFocused = it.isFocused }
-                        .background(if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant, CircleShape)
-                        .border(2.dp, if (isFocused) Color.White else if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent, CircleShape)
-                        .focusable().clickable {
-                            if (isSelected) selectedPlayers.remove(profile) else if (selectedPlayers.size < 2) {
+                    
+                    Surface(
+                        onClick = {
+                            if (isSelected) {
+                                selectedPlayers.remove(profile)
+                            } else if (selectedPlayers.size < 2) {
                                 selectedPlayers.add(profile)
-                                if (selectedPlayers.size == 2) onPlayersSelected(selectedPlayers[0], selectedPlayers[1])
+                                if (selectedPlayers.size == 2) {
+                                    onPlayersSelected(selectedPlayers[0], selectedPlayers[1])
+                                }
                             }
-                        }, contentAlignment = Alignment.Center) {
-                        Text(text = profile, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(4.dp))
+                        },
+                        shape = ClickableSurfaceDefaults.shape(CircleShape),
+                        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
+                        colors = ClickableSurfaceDefaults.colors(
+                            containerColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                            focusedContainerColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+                        ),
+                        border = ClickableSurfaceDefaults.border(
+                            focusedBorder = Border(BorderStroke(3.dp, Color.White)),
+                            border = if (isSelected) Border(BorderStroke(3.dp, MaterialTheme.colorScheme.primary)) else Border.None
+                        ),
+                        modifier = Modifier.size(110.dp).padding(8.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Text(
+                                text = profile, 
+                                style = MaterialTheme.typography.bodyMedium, 
+                                textAlign = TextAlign.Center, 
+                                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface, 
+                                modifier = Modifier.padding(4.dp)
+                            )
+                        }
                     }
                 }
-                var isPlusFocused by remember { mutableStateOf(false) }
-                Box(modifier = Modifier
-                    .size(100.dp).padding(8.dp).onFocusChanged { isPlusFocused = it.isFocused }
-                    .background(MaterialTheme.colorScheme.primaryContainer, CircleShape)
-                    .border(2.dp, if (isPlusFocused) Color.White else MaterialTheme.colorScheme.primary, CircleShape)
-                    .focusable().clickable { navController.navigate("add_profile") }, contentAlignment = Alignment.Center) {
-                    Text("+", fontSize = 40.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                
+                Surface(
+                    onClick = { navController.navigate("add_profile") },
+                    shape = ClickableSurfaceDefaults.shape(CircleShape),
+                    scale = ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
+                    colors = ClickableSurfaceDefaults.colors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        focusedContainerColor = MaterialTheme.colorScheme.primaryContainer
+                    ),
+                    border = ClickableSurfaceDefaults.border(
+                        focusedBorder = Border(BorderStroke(3.dp, Color.White)),
+                        border = Border(BorderStroke(3.dp, MaterialTheme.colorScheme.primary))
+                    ),
+                    modifier = Modifier.size(110.dp).padding(8.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                        Text("+", fontSize = 44.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    }
                 }
             }
             Spacer(modifier = Modifier.size(48.dp))
@@ -216,11 +246,23 @@ fun AddProfileScreen(navController: NavController, profiles: MutableList<String>
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val focusRequester = remember { FocusRequester() }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
-        Column(modifier = Modifier.background(MaterialTheme.colorScheme.surface, RoundedCornerShape(24.dp)).padding(32.dp).fillMaxWidth(0.4f), horizontalAlignment = Alignment.CenterHorizontally) {
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)), contentAlignment = Alignment.Center) {
+        Column(
+            modifier = Modifier
+                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(24.dp))
+                .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f), RoundedCornerShape(24.dp))
+                .padding(32.dp)
+                .fillMaxWidth(0.45f), 
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
             Text("Nowy Profil", style = MaterialTheme.typography.headlineSmall)
             Spacer(modifier = Modifier.size(24.dp))
-            ModernTextField(value = newProfileName, onValueChange = { newProfileName = it; errorMessage = null }, label = "Nazwa gracza", modifier = Modifier.focusRequester(focusRequester))
+            ModernTextField(
+                value = newProfileName, 
+                onValueChange = { newProfileName = it; errorMessage = null }, 
+                label = "Nazwa gracza", 
+                modifier = Modifier.focusRequester(focusRequester)
+            )
             if (errorMessage != null) Text(errorMessage!!, color = Color.Red, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
             Spacer(modifier = Modifier.size(32.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -287,7 +329,7 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.size(8.dp))
                     Button(onClick = {
                         showDebug = true
-                        debugLog = "Łączenie z $dbHost..."
+                        debugLog = "Rozpoczynanie testu dla: $dbHost..."
                         testDatabase(dbHost, dbPort, dbName, dbUser, dbPass) { success, msg ->
                             debugLog = if (success) "SUKCES: $msg" else "BŁĄD: $msg"
                         }
@@ -297,9 +339,9 @@ fun SettingsScreen(
         }
         
         if (showDebug) {
-            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.8f)).clickable { showDebug = false }, contentAlignment = Alignment.Center) {
-                Column(modifier = Modifier.background(Color.DarkGray, RoundedCornerShape(16.dp)).padding(24.dp).fillMaxWidth(0.6f)) {
-                    Text("Debug Połączenia", color = Color.White, fontWeight = FontWeight.Bold)
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.85f)).clickable { showDebug = false }, contentAlignment = Alignment.Center) {
+                Column(modifier = Modifier.background(Color(0xFF2D2D2D), RoundedCornerShape(16.dp)).padding(24.dp).fillMaxWidth(0.7f)) {
+                    Text("Logi MySQL", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                     Spacer(modifier = Modifier.size(16.dp))
                     Text(debugLog, color = if (debugLog.startsWith("SUKCES")) Color.Green else Color.Yellow, style = MaterialTheme.typography.bodyMedium)
                     Spacer(modifier = Modifier.size(24.dp))
@@ -311,15 +353,17 @@ fun SettingsScreen(
 }
 
 fun testDatabase(host: String, port: String, name: String, user: String, pass: String, callback: (Boolean, String) -> Unit) {
+    Log.d(TAG, "testDatabase start: $host:$port")
     Thread {
         try {
-            Class.forName("com.mysql.cj.jdbc.Driver")
-            val url = "jdbc:mysql://$host:$port/$name?useSSL=false&allowPublicKeyRetrieval=true&connectTimeout=5000"
+            Log.d(TAG, "Ładowanie sterownika...")
+            Class.forName("com.mysql.jdbc.Driver")
+            val url = "jdbc:mysql://$host:$port/$name?useSSL=false&connectTimeout=5000"
             DriverManager.getConnection(url, user, pass).use { _ ->
                 Handler(Looper.getMainLooper()).post { callback(true, "Połączono pomyślnie z bazą $name") }
             }
-        } catch (e: Exception) {
-            Handler(Looper.getMainLooper()).post { callback(false, e.localizedMessage ?: "Nieznany błąd") }
+        } catch (e: Throwable) {
+            Handler(Looper.getMainLooper()).post { callback(false, e.localizedMessage ?: e.toString()) }
         }
     }.start()
 }
@@ -351,8 +395,8 @@ fun PlayerLabel(name: String, setsWon: Int, modifier: Modifier) {
 fun saveGameToDatabase(context: Context, dbConfig: Map<String, String>, player1: String, player2: String, scores: List<String>, winner: String) {
     Thread {
         try {
-            Class.forName("com.mysql.cj.jdbc.Driver")
-            val url = "jdbc:mysql://${dbConfig["host"]}:${dbConfig["port"]}/${dbConfig["name"]}?useSSL=false&allowPublicKeyRetrieval=true"
+            Class.forName("com.mysql.jdbc.Driver")
+            val url = "jdbc:mysql://${dbConfig["host"]}:${dbConfig["port"]}/${dbConfig["name"]}?useSSL=false"
             DriverManager.getConnection(url, dbConfig["user"], dbConfig["pass"]).use { conn ->
                 conn.createStatement().execute("CREATE TABLE IF NOT EXISTS match_history (id INT AUTO_INCREMENT PRIMARY KEY, player1 VARCHAR(255), player2 VARCHAR(255), score_summary TEXT, winner VARCHAR(255), match_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
                 val insertSql = "INSERT INTO match_history (player1, player2, score_summary, winner) VALUES (?, ?, ?, ?)"
@@ -361,7 +405,7 @@ fun saveGameToDatabase(context: Context, dbConfig: Map<String, String>, player1:
                     executeUpdate()
                 }
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Handler(Looper.getMainLooper()).post { Toast.makeText(context, "Błąd bazy: ${e.message}", Toast.LENGTH_LONG).show() }
         }
     }.start()
