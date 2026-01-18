@@ -10,17 +10,19 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Switch
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,9 +37,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import androidx.tv.material3.*
 import com.maciej.barshow.ui.theme.BarShowTheme
 import java.sql.DriverManager
@@ -58,6 +62,28 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// --- PERSISTENCE HELPERS ---
+
+fun saveMatchProgress(context: Context, left: Int, right: Int, history: List<String>, setScores: List<String>, startingPlayer: Int?, p1: String, p2: String, sessionId: Long) {
+    val prefs = context.getSharedPreferences("MatchProgress", Context.MODE_PRIVATE)
+    prefs.edit().apply {
+        putInt("left", left)
+        putInt("right", right)
+        putString("history", history.joinToString(","))
+        putString("setScores", setScores.joinToString(","))
+        putInt("startingPlayer", startingPlayer ?: 0)
+        putString("p1", p1)
+        putString("p2", p2)
+        putLong("sessionId", sessionId)
+        putBoolean("exists", true)
+        apply()
+    }
+}
+
+fun clearMatchProgress(context: Context) {
+    context.getSharedPreferences("MatchProgress", Context.MODE_PRIVATE).edit().clear().apply()
+}
+
 fun saveProfiles(context: Context, profiles: List<String>) {
     val prefs = context.getSharedPreferences("BarShowPrefs", Context.MODE_PRIVATE)
     prefs.edit().putStringSet("profiles", profiles.toSet()).apply()
@@ -75,6 +101,7 @@ fun MyApp() {
     
     val genPrefs = context.getSharedPreferences("GeneralSettings", Context.MODE_PRIVATE)
     var changeSidesEnabled by remember { mutableStateOf(genPrefs.getBoolean("changeSides", true)) }
+    var changeSidesAnimationEnabled by remember { mutableStateOf(genPrefs.getBoolean("changeSidesAnim", true)) }
     var player1Name by remember { mutableStateOf(genPrefs.getString("p1Name", "Gracz 1") ?: "Gracz 1") }
     var player2Name by remember { mutableStateOf(genPrefs.getString("p2Name", "Gracz 2") ?: "Gracz 2") }
     
@@ -90,17 +117,24 @@ fun MyApp() {
     NavHost(navController = navController, startDestination = "main") {
         composable("main") {
             MainScreen(
-                onNavigateToDetails = { navController.navigate("details") },
+                onNavigateToDetails = { navController.navigate("details/false") },
+                onNavigateToResume = { navController.navigate("details/true") },
                 onNavigateToSettings = { navController.navigate("settings") },
                 onNavigateToProfiles = { navController.navigate("profiles") }
             )
         }
-        composable("details") {
+        composable(
+            "details/{resume}",
+            arguments = listOf(navArgument("resume") { type = NavType.BoolType })
+        ) { backStackEntry ->
+            val resume = backStackEntry.arguments?.getBoolean("resume") ?: false
             DetailsScreen(
                 navController = navController,
                 changeSidesEnabled = changeSidesEnabled,
+                changeSidesAnimationEnabled = changeSidesAnimationEnabled,
                 player1Name = player1Name,
                 player2Name = player2Name,
+                resume = resume,
                 dbConfig = if (dbHost.isNotBlank()) mapOf("host" to dbHost, "port" to dbPort, "name" to dbName, "user" to dbUser, "pass" to dbPass) else null
             )
         }
@@ -109,6 +143,8 @@ fun MyApp() {
                 navController = navController,
                 changeSidesEnabled = changeSidesEnabled,
                 onToggleChangeSides = { changeSidesEnabled = it },
+                changeSidesAnimationEnabled = changeSidesAnimationEnabled,
+                onToggleChangeSidesAnimation = { changeSidesAnimationEnabled = it },
                 player1Name = player1Name,
                 onPlayer1NameChange = { player1Name = it },
                 player2Name = player2Name,
@@ -144,12 +180,23 @@ fun MyApp() {
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-fun MainScreen(onNavigateToDetails: () -> Unit, onNavigateToSettings: () -> Unit, onNavigateToProfiles: () -> Unit) {
+fun MainScreen(onNavigateToDetails: () -> Unit, onNavigateToResume: () -> Unit, onNavigateToSettings: () -> Unit, onNavigateToProfiles: () -> Unit) {
+    val context = LocalContext.current
+    val hasSavedMatch = remember { context.getSharedPreferences("MatchProgress", Context.MODE_PRIVATE).getBoolean("exists", false) }
+
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             Text("Wybierz grę", style = MaterialTheme.typography.displayMedium, modifier = Modifier.padding(bottom = 48.dp))
+            
+            if (hasSavedMatch) {
+                Button(onClick = onNavigateToResume, modifier = Modifier.size(width = 240.dp, height = 56.dp)) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Kontynuuj mecz", style = MaterialTheme.typography.labelLarge, color = Color.Yellow) }
+                }
+                Spacer(modifier = Modifier.size(16.dp))
+            }
+
             Button(onClick = onNavigateToDetails, modifier = Modifier.size(width = 240.dp, height = 56.dp)) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Tenis Stołowy", style = MaterialTheme.typography.labelLarge) }
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Nowy mecz", style = MaterialTheme.typography.labelLarge) }
             }
             Spacer(modifier = Modifier.size(16.dp))
             Button(onClick = onNavigateToProfiles, modifier = Modifier.size(width = 240.dp, height = 56.dp)) {
@@ -284,6 +331,7 @@ fun AddProfileScreen(navController: NavController, profiles: MutableList<String>
 fun SettingsScreen(
     navController: NavController,
     changeSidesEnabled: Boolean, onToggleChangeSides: (Boolean) -> Unit,
+    changeSidesAnimationEnabled: Boolean, onToggleChangeSidesAnimation: (Boolean) -> Unit,
     player1Name: String, onPlayer1NameChange: (String) -> Unit,
     player2Name: String, onPlayer2NameChange: (String) -> Unit,
     dbHost: String, onDbHostChange: (String) -> Unit,
@@ -298,7 +346,7 @@ fun SettingsScreen(
 
     BackHandler {
         val genPrefs = context.getSharedPreferences("GeneralSettings", Context.MODE_PRIVATE)
-        genPrefs.edit().putBoolean("changeSides", changeSidesEnabled).putString("p1Name", player1Name).putString("p2Name", player2Name).apply()
+        genPrefs.edit().putBoolean("changeSides", changeSidesEnabled).putBoolean("changeSidesAnim", changeSidesAnimationEnabled).putString("p1Name", player1Name).putString("p2Name", player2Name).apply()
         val dbPrefs = context.getSharedPreferences("DatabasePrefs", Context.MODE_PRIVATE)
         dbPrefs.edit().putString("host", dbHost).putString("port", dbPort).putString("name", dbName).putString("user", dbUser).putString("pass", dbPass).apply()
         navController.popBackStack()
@@ -312,7 +360,22 @@ fun SettingsScreen(
                 Column(modifier = Modifier.weight(1f).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text("Ogólne", style = MaterialTheme.typography.headlineSmall)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(12.dp)).padding(16.dp)) {
-                        Text("Zmiana stron", style = MaterialTheme.typography.titleMedium); Switch(checked = changeSidesEnabled, onCheckedChange = onToggleChangeSides)
+                        Text("Zmiana stron", style = MaterialTheme.typography.titleMedium)
+                        androidx.compose.material3.Switch(
+                            checked = changeSidesEnabled, 
+                            onCheckedChange = onToggleChangeSides, 
+                            thumbContent = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(12.dp)).padding(16.dp)) {
+                        Text("Animacja zmiany stron", style = MaterialTheme.typography.titleMedium)
+                        androidx.compose.material3.Switch(
+                            checked = changeSidesAnimationEnabled, 
+                            onCheckedChange = onToggleChangeSidesAnimation, 
+                            thumbContent = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        )
                     }
                     ModernTextField(value = player1Name, onValueChange = onPlayer1NameChange, label = "Domyślna Nazwa P1")
                     ModernTextField(value = player2Name, onValueChange = onPlayer2NameChange, label = "Domyślna Nazwa P2")
@@ -392,28 +455,46 @@ fun PlayerLabel(name: String, setsWon: Int, modifier: Modifier) {
     }
 }
 
-fun saveGameToDatabase(context: Context, dbConfig: Map<String, String>, player1: String, player2: String, scores: List<String>, winner: String) {
+fun manageDatabaseMatch(dbConfig: Map<String, String>, sessionId: Long, player1: String, player2: String, scores: List<String>, winner: String? = null, action: String = "UPDATE") {
     Thread {
         try {
             Class.forName("com.mysql.jdbc.Driver")
             val url = "jdbc:mysql://${dbConfig["host"]}:${dbConfig["port"]}/${dbConfig["name"]}?useSSL=false"
             DriverManager.getConnection(url, dbConfig["user"], dbConfig["pass"]).use { conn ->
-                conn.createStatement().execute("CREATE TABLE IF NOT EXISTS match_history (id INT AUTO_INCREMENT PRIMARY KEY, player1 VARCHAR(255), player2 VARCHAR(255), score_summary TEXT, winner VARCHAR(255), match_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
-                val insertSql = "INSERT INTO match_history (player1, player2, score_summary, winner) VALUES (?, ?, ?, ?)"
-                conn.prepareStatement(insertSql).apply {
-                    setString(1, player1); setString(2, player2); setString(3, scores.joinToString(", ")); setString(4, winner)
-                    executeUpdate()
+                val stmt = conn.createStatement()
+                stmt.execute("CREATE TABLE IF NOT EXISTS active_matches (session_id BIGINT PRIMARY KEY, player1 VARCHAR(255), player2 VARCHAR(255), score_summary TEXT, match_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+                stmt.execute("CREATE TABLE IF NOT EXISTS match_history (id INT AUTO_INCREMENT PRIMARY KEY, session_id BIGINT, player1 VARCHAR(255), player2 VARCHAR(255), score_summary TEXT, winner VARCHAR(255), match_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+
+                when (action) {
+                    "UPDATE" -> {
+                        val sql = "INSERT INTO active_matches (session_id, player1, player2, score_summary) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE score_summary = VALUES(score_summary)"
+                        conn.prepareStatement(sql).apply {
+                            setLong(1, sessionId); setString(2, player1); setString(3, player2); setString(4, scores.joinToString(", "))
+                            executeUpdate()
+                        }
+                    }
+                    "FINISH" -> {
+                        val del = "DELETE FROM active_matches WHERE session_id = ?"
+                        conn.prepareStatement(del).apply { setLong(1, sessionId); executeUpdate() }
+                        val ins = "INSERT INTO match_history (session_id, player1, player2, score_summary, winner) VALUES (?, ?, ?, ?, ?)"
+                        conn.prepareStatement(ins).apply {
+                            setLong(1, sessionId); setString(2, player1); setString(3, player2); setString(4, scores.joinToString(", ")); setString(5, winner ?: "Brak")
+                            executeUpdate()
+                        }
+                    }
+                    "DELETE" -> {
+                        val del = "DELETE FROM active_matches WHERE session_id = ?"
+                        conn.prepareStatement(del).apply { setLong(1, sessionId); executeUpdate() }
+                    }
                 }
             }
-        } catch (e: Throwable) {
-            Handler(Looper.getMainLooper()).post { Toast.makeText(context, "Błąd bazy: ${e.message}", Toast.LENGTH_LONG).show() }
-        }
+        } catch (e: Exception) { Log.e(TAG, "DB error ($action): ${e.message}") }
     }.start()
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-fun DetailsScreen(navController: NavController, changeSidesEnabled: Boolean, player1Name: String, player2Name: String, dbConfig: Map<String, String>?) {
+fun DetailsScreen(navController: NavController, changeSidesEnabled: Boolean, changeSidesAnimationEnabled: Boolean, player1Name: String, player2Name: String, resume: Boolean = false, dbConfig: Map<String, String>?) {
     var leftCounter by remember { mutableIntStateOf(0) }
     var rightCounter by remember { mutableIntStateOf(0) }
     val history = remember { mutableStateListOf<String>() }
@@ -425,20 +506,103 @@ fun DetailsScreen(navController: NavController, changeSidesEnabled: Boolean, pla
     var servicePlayer by remember { mutableIntStateOf(1) }
     var serviceCount by remember { mutableIntStateOf(1) }
     var winner by remember { mutableStateOf<Int?>(null) }
+    var matchSessionId by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var showExitDialog by remember { mutableStateOf(false) }
+    var isFinished by remember { mutableStateOf(false) }
+
     val context = LocalContext.current
     val soundPlayer = remember { SoundPlayer(context) }
 
-    DisposableEffect(Unit) { onDispose { soundPlayer.release() } }
+    LaunchedEffect(resume) {
+        if (resume) {
+            val prefs = context.getSharedPreferences("MatchProgress", Context.MODE_PRIVATE)
+            if (prefs.getBoolean("exists", false)) {
+                leftCounter = prefs.getInt("left", 0)
+                rightCounter = prefs.getInt("right", 0)
+                val h = prefs.getString("history", "") ?: ""
+                if (h.isNotEmpty()) history.addAll(h.split(","))
+                val s = prefs.getString("setScores", "") ?: ""
+                if (s.isNotEmpty()) setScores.addAll(s.split(","))
+                val sp = prefs.getInt("startingPlayer", 0)
+                if (sp != 0) {
+                    startingPlayer = sp
+                    matchSessionId = prefs.getLong("sessionId", System.currentTimeMillis())
+                    
+                    var currentStart = startingPlayer!!
+                    repeat(setScores.size) { currentStart = if (currentStart == 1) 2 else 1 }
+                    setStartingPlayer = currentStart
+                    
+                    val isFinalSet = setScores.size == 4
+                    val totalPoints = leftCounter + rightCounter
+                    val deuceThreshold = if (isFinalSet) 5 else 10
+                    val isDeuce = leftCounter >= deuceThreshold && rightCounter >= deuceThreshold
+                    
+                    if (isFinalSet || isDeuce) {
+                        servicePlayer = if (totalPoints % 2 == 0) setStartingPlayer!! else (if (setStartingPlayer == 1) 2 else 1)
+                        serviceCount = 1
+                    } else {
+                        val servicePairIndex = totalPoints / 2
+                        servicePlayer = if (servicePairIndex % 2 == 0) setStartingPlayer!! else (if (setStartingPlayer == 1) 2 else 1)
+                        serviceCount = (totalPoints % 2) + 1
+                    }
+                }
+            }
+        }
+    }
+
+    fun updateGameState(action: String = "UPDATE") {
+        if (isFinished && action == "UPDATE") return
+        saveMatchProgress(context, leftCounter, rightCounter, history.toList(), setScores.toList(), startingPlayer, player1Name, player2Name, matchSessionId)
+        dbConfig?.let {
+            val currentScores = setScores.toList() + "$leftCounter-$rightCounter"
+            val winnerName = when (winner) {
+                1 -> player1Name
+                2 -> player2Name
+                else -> null
+            }
+            manageDatabaseMatch(it, matchSessionId, player1Name, player2Name, currentScores, winnerName, action)
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            soundPlayer.release()
+            if (!isFinished) {
+                // Remove from active matches in DB if match was not finished
+                dbConfig?.let { manageDatabaseMatch(it, matchSessionId, player1Name, player2Name, emptyList(), null, "DELETE") }
+            }
+        }
+    }
 
     val isSwapped = changeSidesEnabled && (setScores.size % 2 != 0)
-    val p1SetsWon = setScores.count { it.split('-')[0].toInt() > it.split('-')[1].toInt() }
-    val p2SetsWon = setScores.count { it.split('-')[1].toInt() > it.split('-')[0].toInt() }
+    val p1SetsWon = setScores.count { it.contains("-") && it.split('-')[0].toInt() > it.split('-')[1].toInt() }
+    val p2SetsWon = setScores.count { it.contains("-") && it.split('-')[1].toInt() > it.split('-')[0].toInt() }
+
+    BackHandler { showExitDialog = true }
+
+    if (showExitDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showExitDialog = false },
+            title = { androidx.compose.material3.Text("Przerwać mecz?") },
+            text = { androidx.compose.material3.Text("Mecz zostanie zapisany lokalnie, ale usunięty z tabeli aktywnych meczów.") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { navController.popBackStack() }) { androidx.compose.material3.Text("Tak") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { showExitDialog = false }) { androidx.compose.material3.Text("Nie") }
+            }
+        )
+    }
 
     when {
         winner != null -> {
-            val winnerName = if (winner == 1) player1Name else player2Name
-            LaunchedEffect(winner) { dbConfig?.let { saveGameToDatabase(context, it, player1Name, player2Name, setScores.toList(), winnerName) } }
+            LaunchedEffect(winner) { 
+                isFinished = true
+                clearMatchProgress(context)
+                updateGameState("FINISH")
+            }
             Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                val winnerName = if (winner == 1) player1Name else player2Name
                 Text("$winnerName wygrał!", style = MaterialTheme.typography.displayLarge); Spacer(modifier = Modifier.size(24.dp))
                 Box(modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(16.dp)).padding(24.dp)) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -454,8 +618,8 @@ fun DetailsScreen(navController: NavController, changeSidesEnabled: Boolean, pla
             Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("Kto zaczyna serwis?", style = MaterialTheme.typography.displaySmall); Spacer(modifier = Modifier.size(40.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                    Button(onClick = { startingPlayer = 1; setStartingPlayer = 1; servicePlayer = 1; serviceCount = 1 }) { Text(player1Name, modifier = Modifier.padding(horizontal = 16.dp)) }
-                    Button(onClick = { startingPlayer = 2; setStartingPlayer = 2; servicePlayer = 2; serviceCount = 1 }) { Text(player2Name, modifier = Modifier.padding(horizontal = 16.dp)) }
+                    Button(onClick = { startingPlayer = 1; setStartingPlayer = 1; servicePlayer = 1; serviceCount = 1; updateGameState() }) { Text(player1Name, modifier = Modifier.padding(horizontal = 16.dp)) }
+                    Button(onClick = { startingPlayer = 2; setStartingPlayer = 2; servicePlayer = 2; serviceCount = 1; updateGameState() }) { Text(player2Name, modifier = Modifier.padding(horizontal = 16.dp)) }
                 }
             }
         }
@@ -463,18 +627,31 @@ fun DetailsScreen(navController: NavController, changeSidesEnabled: Boolean, pla
             val isFinalSet = setScores.size == 4
             Box(modifier = Modifier.fillMaxSize().focusRequester(focusRequester).focusable().onKeyEvent { keyEvent ->
                 if (keyEvent.nativeKeyEvent.action != KeyEvent.ACTION_UP) return@onKeyEvent false
+                val deuceThreshold = if (isFinalSet) 5 else 10
+                
                 when (keyEvent.nativeKeyEvent.keyCode) {
                     KeyEvent.KEYCODE_DPAD_LEFT -> { leftCounter++; history.add("left"); soundPlayer.playAddPointSound() }
                     KeyEvent.KEYCODE_DPAD_RIGHT -> { rightCounter++; history.add("right"); soundPlayer.playAddPointSound() }
                     KeyEvent.KEYCODE_DPAD_DOWN -> {
                         if (history.isNotEmpty()) {
                             val lastPointFor = history.removeAt(history.lastIndex); if (lastPointFor == "left") leftCounter-- else rightCounter--; soundPlayer.playRemovePointSound()
-                            if (isFinalSet) servicePlayer = if (servicePlayer == 1) 2 else 1 else { serviceCount--; if (serviceCount == 0) { servicePlayer = if (servicePlayer == 1) 2 else 1; serviceCount = 2 } }
+                            val totalPoints = leftCounter + rightCounter
+                            val isDeuceNow = leftCounter >= deuceThreshold && rightCounter >= deuceThreshold
+                            if (isFinalSet || isDeuceNow) {
+                                servicePlayer = if (totalPoints % 2 == 0) setStartingPlayer!! else (if (setStartingPlayer == 1) 2 else 1)
+                                serviceCount = 1
+                            } else {
+                                val servicePairIndex = totalPoints / 2
+                                servicePlayer = if (servicePairIndex % 2 == 0) setStartingPlayer!! else (if (setStartingPlayer == 1) 2 else 1)
+                                serviceCount = (totalPoints % 2) + 1
+                            }
                         } else if (setsPointHistory.isNotEmpty()) {
                             val lastSetHistory = setsPointHistory.removeAt(setsPointHistory.lastIndex); setScores.removeAt(setScores.lastIndex); history.clear(); history.addAll(lastSetHistory)
-                            val prevLeftCounter = history.count { it == "left" }; val prevRightCounter = history.count { it == "right" }; val lastPointFor = history.removeAt(history.lastIndex); leftCounter = if (lastPointFor == "left") prevLeftCounter - 1 else prevLeftCounter; rightCounter = if (lastPointFor == "right") prevRightCounter - 1 else prevRightCounter; setStartingPlayer = if (setStartingPlayer == 1) 2 else 1; val isNowFinalSet = setScores.size == 4; val totalPoints = leftCounter + rightCounter
-                            if (isNowFinalSet) { servicePlayer = if (totalPoints % 2 == 0) setStartingPlayer!! else (if (setStartingPlayer == 1) 2 else 1); serviceCount = 1 } else { val servicePairIndex = totalPoints / 2; servicePlayer = if (servicePairIndex % 2 == 0) setStartingPlayer!! else (if (setStartingPlayer == 1) 2 else 1); serviceCount = (totalPoints % 2) + 1 }; soundPlayer.playRemovePointSound()
+                            val prevLeftCounter = history.count { it == "left" }; val prevRightCounter = history.count { it == "right" }; val lastPointFor = history.removeAt(history.lastIndex); leftCounter = if (lastPointFor == "left") prevLeftCounter - 1 else prevLeftCounter; rightCounter = if (lastPointFor == "right") prevRightCounter - 1 else prevRightCounter; setStartingPlayer = if (setStartingPlayer == 1) 2 else 1; val totalPoints = leftCounter + rightCounter
+                            val isDeuceNow = leftCounter >= deuceThreshold && rightCounter >= deuceThreshold
+                            if (isFinalSet || isDeuceNow) { servicePlayer = if (totalPoints % 2 == 0) setStartingPlayer!! else (if (setStartingPlayer == 1) 2 else 1); serviceCount = 1 } else { val servicePairIndex = totalPoints / 2; servicePlayer = if (servicePairIndex % 2 == 0) setStartingPlayer!! else (if (setStartingPlayer == 1) 2 else 1); serviceCount = (totalPoints % 2) + 1 }; soundPlayer.playRemovePointSound()
                         }
+                        updateGameState()
                         return@onKeyEvent true
                     }
                     else -> return@onKeyEvent false
@@ -484,24 +661,78 @@ fun DetailsScreen(navController: NavController, changeSidesEnabled: Boolean, pla
                 if (setWon && setScores.size < 5) {
                     val p1Score = if (isSwapped) rightCounter else leftCounter; val p2Score = if (isSwapped) leftCounter else rightCounter; setScores.add("$p1Score-$p2Score")
                     setsPointHistory.add(history.toList())
-                    if (setScores.count { it.split('-')[0].toInt() > it.split('-')[1].toInt() } == 3) winner = 1 
-                    else if (setScores.count { it.split('-')[1].toInt() > it.split('-')[0].toInt() } == 3) winner = 2 
+                    if (setScores.count { it.contains("-") && it.split('-')[0].toInt() > it.split('-')[1].toInt() } == 3) winner = 1 
+                    else if (setScores.count { it.contains("-") && it.split('-')[1].toInt() > it.split('-')[0].toInt() } == 3) winner = 2 
                     else { leftCounter = 0; rightCounter = 0; history.clear(); setStartingPlayer = if (setStartingPlayer == 1) 2 else 1; servicePlayer = setStartingPlayer!!; serviceCount = 1 }
-                } else if (!setWon) { if (isFinalSet) servicePlayer = if (servicePlayer == 1) 2 else 1 else { if (serviceCount == 2) { serviceCount = 1; servicePlayer = if (servicePlayer == 1) 2 else 1 } else serviceCount++ } }
+                } else if (!setWon) { 
+                    val isDeuce = leftCounter >= deuceThreshold && rightCounter >= deuceThreshold
+                    if (isFinalSet || isDeuce) { servicePlayer = if (servicePlayer == 1) 2 else 1; serviceCount = 1 } else { if (serviceCount == 2) { serviceCount = 1; servicePlayer = if (servicePlayer == 1) 2 else 1 } else serviceCount++ } 
+                }
+                updateGameState()
                 true
             }) {
-                PlayerLabel(name = if (isSwapped) player2Name else player1Name, setsWon = if (isSwapped) p2SetsWon else p1SetsWon, modifier = Modifier.align(Alignment.TopStart))
-                PlayerLabel(name = if (isSwapped) player1Name else player2Name, setsWon = if (isSwapped) p1SetsWon else p2SetsWon, modifier = Modifier.align(Alignment.TopEnd))
-                Column(modifier = Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(120.dp), verticalAlignment = Alignment.CenterVertically) { Text(text = "$leftCounter", fontSize = 200.sp, color = MaterialTheme.colorScheme.onSurface); Text(text = "$rightCounter", fontSize = 200.sp, color = MaterialTheme.colorScheme.onSurface) }
-                    Box(modifier = Modifier.padding(top = 16.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), RoundedCornerShape(12.dp)).border(BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)), RoundedCornerShape(12.dp)).padding(horizontal = 32.dp, vertical = 12.dp)) { Text(text = "SET ${setScores.size + 1}", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary) }
+                // Animated Side Switching for Player Names
+                Row(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter)) {
+                    val p1Label = @Composable { PlayerLabel(name = player1Name, setsWon = p1SetsWon, modifier = Modifier) }
+                    val p2Label = @Composable { PlayerLabel(name = player2Name, setsWon = p2SetsWon, modifier = Modifier) }
+                    
+                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.TopStart) {
+                        if (changeSidesAnimationEnabled) {
+                            AnimatedContent(
+                                targetState = isSwapped,
+                                transitionSpec = {
+                                    if (targetState) {
+                                        (slideInHorizontally { it } + fadeIn(tween(500))).togetherWith(slideOutHorizontally { -it } + fadeOut(tween(500)))
+                                    } else {
+                                        (slideInHorizontally { -it } + fadeIn(tween(500))).togetherWith(slideOutHorizontally { it } + fadeOut(tween(500)))
+                                    }
+                                }
+                            ) { swapped -> if (swapped) p2Label() else p1Label() }
+                        } else {
+                            if (isSwapped) p2Label() else p1Label()
+                        }
+                    }
+                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.TopEnd) {
+                        if (changeSidesAnimationEnabled) {
+                            AnimatedContent(
+                                targetState = isSwapped,
+                                transitionSpec = {
+                                    if (targetState) {
+                                        (slideInHorizontally { -it } + fadeIn(tween(500))).togetherWith(slideOutHorizontally { it } + fadeOut(tween(500)))
+                                    } else {
+                                        (slideInHorizontally { it } + fadeIn(tween(500))).togetherWith(slideOutHorizontally { -it } + fadeOut(tween(500)))
+                                    }
+                                }
+                            ) { swapped -> if (swapped) p1Label() else p2Label() }
+                        } else {
+                            if (isSwapped) p1Label() else p2Label()
+                        }
+                    }
                 }
+
+                // Center Score and Set Info
+                Column(modifier = Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(120.dp), verticalAlignment = Alignment.CenterVertically) { 
+                        Text(text = "$leftCounter", fontSize = 200.sp, color = MaterialTheme.colorScheme.onSurface)
+                        Text(text = "$rightCounter", fontSize = 200.sp, color = MaterialTheme.colorScheme.onSurface) 
+                    }
+                    Box(modifier = Modifier.padding(top = 16.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), RoundedCornerShape(12.dp)).border(BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)), RoundedCornerShape(12.dp)).padding(horizontal = 32.dp, vertical = 12.dp)) { 
+                        Text(text = "SET ${setScores.size + 1}", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary) 
+                    }
+                }
+                
                 val isServiceOnLeft = if (!isSwapped) servicePlayer == 1 else servicePlayer == 2
                 Box(Modifier.align(if (isServiceOnLeft) Alignment.BottomStart else Alignment.BottomEnd).padding(32.dp).size(28.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
-                if (serviceCount == 2 && !isFinalSet) Box(Modifier.align(if (isServiceOnLeft) Alignment.BottomEnd else Alignment.BottomStart).padding(32.dp).size(28.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), CircleShape))
+                if (serviceCount == 2 && !isFinalSet && !(leftCounter >= 10 && rightCounter >= 10)) Box(Modifier.align(if (isServiceOnLeft) Alignment.BottomEnd else Alignment.BottomStart).padding(32.dp).size(28.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), CircleShape))
+                
+                // Set Scores Row
                 Row(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 32.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                     repeat(5) { index ->
-                        val score = setScores.getOrNull(index) ?: "- : -"; val displayScore = if (isSwapped && score != "- : -") { val parts = score.split('-'); "${parts[1]} : ${parts[0]}" } else score
+                        val score = setScores.getOrNull(index) ?: "- : -"
+                        val displayScore = if (isSwapped && score != "- : -") { 
+                            val parts = score.split('-')
+                            "${parts[1]} : ${parts[0]}" 
+                        } else score
                         Text(text = displayScore, style = MaterialTheme.typography.titleMedium, color = if (score == "- : -") MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f) else MaterialTheme.colorScheme.onSurface)
                     }
                 }
