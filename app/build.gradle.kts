@@ -14,8 +14,8 @@ android {
         applicationId = "com.maciej.barshow"
         minSdk = 34
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "2.0"
 
     }
 
@@ -59,4 +59,6 @@ dependencies {
     implementation("androidx.compose.material3:material3:1.4.0")
     // Zmiana na wersję kompatybilną z Androidem
     implementation("mysql:mysql-connector-java:5.1.49")
+    implementation("org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5")
+    implementation("androidx.localbroadcastmanager:localbroadcastmanager:1.1.0")
 }
